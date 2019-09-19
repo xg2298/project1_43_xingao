@@ -1,0 +1,620 @@
+---
+title: "What makes Jazz less popular?"
+author: "Xin Gao UNI xg2298"
+date: "9/15/2019"
+output: html_document
+---
+
+![ ](/Users/xingao/Documents/GitHub/ADS_Teaching/Projects_StarterCodes/Project1-RNotebook/figs/jazz_music.jpg)
+
+#### According to Nielsen's report, jazz is the least listened-to music in the U.S.
+
+#### This report is to figure out the possible reasons why jazz music become less attractive to people.
+
+#### The whole dataset:"lyrics.csv" (Download) is a filtered corpus of 100,000+ song lyrics from MetroLyrics. Available features are song name, year, artist, genre, and lyrics. 
+
+```{r load libraries, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidytext)
+library(plotly)
+library(DT)
+library(tm)
+library(data.table)
+library(scales)
+library(wordcloud2)
+library(gridExtra)
+library(ngram)
+library(shiny) 
+library(textdata)
+library(cluster)
+library(qdapTools)
+library(lubridate)
+
+
+```
+
+
+```{r,echo=FALSE}
+# load lyrics data
+load('../output/processed_lyrics.RData') 
+#data further cleaning 
+words <- c('ive', 'youre', 'youll','didnt','youve','ill')
+
+corpus <- VCorpus(VectorSource(dt_lyrics$stemmedwords))%>%
+  tm_map(removeWords, words )
+
+word_tibble <- tidy(corpus) %>%
+  dplyr::select(text) %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(word, text)  
+stemmed <- tm_map(corpus, stemDocument) %>%
+  tidy() %>%
+  dplyr::select(text)
+dict <- tidy(corpus) %>%
+  dplyr::select(text) %>%
+  unnest_tokens(dictionary, text)
+completed <- stemmed %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(stems, text) %>%
+  bind_cols(dict) 
+completed <- completed %>%
+  group_by(stems) %>%
+  count(dictionary) %>%
+  mutate(word = dictionary[which.max(n)]) %>%
+  ungroup() %>%
+  dplyr::select(stems, word) %>%
+  distinct() %>%
+  right_join(completed) %>%
+  dplyr::select(-stems)
+completed <- completed %>%
+  group_by(id) %>%
+  summarise(stemmedwords= str_c(word, collapse = " ")) %>%
+  ungroup()
+dt_lyrics <- dt_lyrics %>%
+  mutate(id = row_number()) %>%
+  inner_join(completed)
+save(dt_lyrics, file="../output/processed_lyrics.RData")
+load('../output/processed_lyrics.RData')  
+```
+First, I use the clean data processed by professor directly. (The file can be found in output file.) Then, I further clean the data by removing more stop words, such as I\'ll,didnt, youve, etc.
+
+## Reason 1: The rise of other types of music, such as metal, hip-hop.
+
+
+```{r,include=FALSE}
+#1.wordcloud for jazz music
+
+
+h<-count(filter(word_tibble, id %in% which(dt_lyrics$genre == "Jazz")), word, sort = TRUE)
+as.matrix(h)
+```
+
+```{r,echo=FALSE}
+h1<-h[1:25,]
+wordcloud2(h1,size=1)
+
+```
+
+
+
+```{r,echo=FALSE}
+#
+dt_lyrics$decade<-mutate(dt_lyrics,decade=dt_lyrics$year - (dt_lyrics$year %% 10))
+dt_lyrics%>%
+  mutate(date = as_date(paste(as.character(dt_lyrics$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(5))) %>% 
+  group_by(decade, genre) %>% 
+  summarise(N = n()) %>% 
+  mutate(freq = round(N/sum(N), 2)) %>% 
+  filter(genre %in% c( "R&B", "Metal","Jazz", "Pop", "Hip-Hop")) %>% 
+  ggplot(aes(decade, freq, colour = genre)) +
+  # geom_line() +
+  geom_smooth(se = FALSE) +
+  labs(y = "Smoothed proportion (%)", x = "Year", 
+       title = "Smoothed proportion of total songs per Music Genre", 
+       subtitle = "From 1970s to 2010s")+
+  theme(plot.title = element_text(size = 16, face = "bold"))+
+  scale_y_continuous(labels = scales::percent_format())
+
+```
+
+From the curve, we can tell that after 1980s, jazz music stay almost unchanged. At the same time, the other type of music start to occupy the market. 
+
+
+```{r,echo=FALSE}
+#proportion of each genre change 
+#in 1970s
+#year_start4 <- as.integer(substr('1970s', 1, 4))
+#dt_sub4 <- filter(dt_lyrics, year>=year_start4) %>%
+ # filter(year<(year_start4+10))
+#dt_sub
+#year_1970<-dt_sub4%>%
+ # group_by(genre)%>%
+  #count()%>%
+  #ungroup()%>%
+  #mutate(Freq=round(n/sum(n)*100,2))%>%
+  #arrange(-n)%>%
+  #ggplot() +
+  #geom_col(aes(reorder(genre, -Freq), Freq), fill = "steelblue", alpha = 0.7) +
+  #labs(y = "Number of songs", x = "Music Genre", 
+   #    title = "Proportion of songs per music genre", 
+    #   subtitle = "1970s")+
+  #scale_y_continuous(labels = scales::percent_format()) 
+
+
+#year_1970
+
+#year_start5 <- as.integer(substr('2010s', 1, 4))
+#dt_sub5 <- filter(dt_lyrics, year>=year_start5) %>%
+ # filter(year<(year_start1+10))
+#dt_sub5
+#year_2010<-dt_sub5%>%
+ # group_by(genre)%>%
+  #count()%>%
+  #ungroup()%>%
+  #mutate(Freq=round(n/sum(n)*100,2))%>%
+  #arrange(-n)%>%
+ #ggplot() +
+  #geom_col(aes(reorder(genre, -Freq), Freq), fill = "steelblue", alpha = 0.7) +
+  #labs(y = "Number of songs", x = "Music Genre", 
+   #    title = "Proportion of songs per music genre", 
+    #   subtitle = "2010s")+
+  #scale_y_continuous(labels = scales::percent_format()) 
+
+
+#year_2010
+```
+## Reason 2: Today's music express deeper unhappiness than the songs of the past.
+Since the 1980s, the emotions such as sadness and loneliness have become increasingly dominant in song lyrics. Expressions of pure joy, happnies --think about Beatles' \'ALL you need is love\' -- are apparently less appealing to the audience. 
+
+
+```{r,echo=FALSE}
+#sentiment analysis 
+
+#1-1
+lyrics_all<-dt_lyrics%>%
+  unnest_tokens(word,lyrics)
+
+totals_all<- lyrics_all%>%
+  count(song) %>%
+  rename(total_words = n) # add 1 after words 
+
+lyric_counts_all <- lyrics_all%>%
+  left_join(totals_all, by = 'song')
+
+lyric_sentiment_all <- lyric_counts_all %>%
+  inner_join(get_sentiments('nrc'))
+
+all<-lyric_sentiment_all
+#negative sentiment over time 
+#all%>%
+  #filter(sentiment == 'negative') %>%
+  #count(song, year, total_words) %>%
+  #ungroup() %>%
+  #mutate(percent = n / total_words,
+         #year = 10 * floor(year / 10)) %>%
+  #ggplot(aes(x = factor(year), y = percent)) +
+  #geom_line()
+
+negative_filter<-all%>%
+  filter(sentiment=='fear')
+count1<-negative_filter%>%
+  count(song, year, total_words)
+#count1$percent<-count1$n/count1$total_words
+count1$decade<-10*floor(count1$year/10)
+#percent1<-sum(count1$n)/sum(count1$total_words)
+
+count2<-count1%>%
+  filter(decade=='1970')
+percent2<-sum(count2$n)/sum(count2$total_words)
+
+count3<-count1%>%
+  filter(decade=='1980')
+percent3<-sum(count3$n)/sum(count3$total_words)
+count4<-count1%>%
+  filter(decade=='1990')
+percent4<-sum(count4$n)/sum(count4$total_words)
+count5<-count1%>%
+  filter(decade=='2000')
+percent5<-sum(count5$n)/sum(count5$total_words)
+count6<-count1%>%
+  filter(decade=='2010')
+percent6<-sum(count6$n)/sum(count6$total_words)
+
+percentage0<-c(percent2,percent3,percent4,percent5,percent6)
+percentage01<-round(percentage0,digits=4)
+decade<-c('1970s','1980s','1990s','2000s','2010s')
+dataframe<-as.data.frame(cbind(decade,percentage01))
+
+ggplot(dataframe,aes(x=decade,y=percentage01))+
+  geom_point()
+
+positive_filter<-all%>%
+  filter(sentiment=='joy')
+count11<-positive_filter%>%
+  count(song, year, total_words)
+#count1$percent<-count1$n/count1$total_words
+count11$decade<-10*floor(count11$year/10)
+#percent1<-sum(count1$n)/sum(count1$total_words)
+
+count21<-count11%>%
+  filter(decade=='1970')
+percent21<-sum(count21$n)/sum(count21$total_words)
+
+count31<-count11%>%
+  filter(decade=='1980')
+percent31<-sum(count31$n)/sum(count31$total_words)
+count41<-count11%>%
+  filter(decade=='1990')
+percent41<-sum(count41$n)/sum(count41$total_words)
+count51<-count11%>%
+  filter(decade=='2000')
+percent51<-sum(count51$n)/sum(count51$total_words)
+count61<-count11%>%
+  filter(decade=='2010')
+percent61<-sum(count61$n)/sum(count61$total_words)
+
+percentage<-c(percent21,percent31,percent41,percent51,percent61)
+percentage1<-round(percentage,digits=4)
+decade<-c('1970s','1980s','1990s','2000s','2010s')
+dataframe<-as.data.frame(cbind(decade,percentage1))
+
+ggplot(dataframe,aes(x=decade,y=percentage1))+geom_point()
+
+
+
+
+```
+
+
+Read from the dot plots above, the percentage for negative feeling words increases 0.3%; however, the percentage for positive feeling words only increases 0.003%. It shows us that negative feeling become more often to appear in the music.
+
+
+
+```{r,include=FALSE}
+#1-2 sentiment wordcloud for comparing different genres of music
+
+j<-count(filter(word_tibble, id %in% which(dt_lyrics$genre == "Jazz")), word, sort = TRUE)
+as.matrix(h)
+```
+
+```{r,echo=FALSE}
+j1<-h[1:30,]
+wordcloud2(h1,size=1)
+```
+```{r,include=FALSE}
+Hip_Hop<-filter(dt_lyrics,genre=="Hip-Hop")
+h<-count(filter(word_tibble, id %in% which(dt_lyrics$genre == "Hip-Hop")), word, sort = TRUE)
+as.matrix(h)
+```
+
+```{r, include=FALSE}
+h1<-h[1:30,]
+wordcloud2(h1,size=1)
+```
+```{r,echo=FALSE}
+#comparion of genre itself 
+#jazz<-filter(dt_lyrics,genre=="Jazz")
+#jazz$lyrics1<-as.character(jazz$lyrics)
+#tidy_lyrics<-jazz%>%
+  #unnest_tokens(word,lyrics1)
+
+#tidy_lyrics%>%
+  #inner_join(get_sentiments("bing"))%>%
+  #count(word,sentiment,sort=TRUE)%>%
+  #acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  #comparison.cloud(colors = c("#F8766D", "#00BFC4"), max.words = 55)
+  
+
+
+
+#Hip_Hop$lyrics1<-as.character(Hip_Hop$lyrics)
+#tidy_lyrics<-Hip_Hop%>%
+  #unnest_tokens(word,lyrics1)
+
+#tidy_lyrics%>%
+  #inner_join(get_sentiments("bing"))%>%
+  #count(word,sentiment,sort=TRUE)%>%
+  #acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  #comparison.cloud(colors = c("#F8766D", "#00BFC4"), max.words = 55)
+```
+
+```{r,echo=FALSE}
+jazz<-filter(dt_lyrics,genre=="Jazz")
+#1-3 sentiment bar plot
+lyrics_jazz<-jazz%>%
+  unnest_tokens(word,lyrics)
+
+totals_jazz <- lyrics_jazz%>%
+  count(song) %>%
+  rename(total_words = n)
+
+lyric_counts <- lyrics_jazz%>%
+  left_join(totals_jazz, by = 'song')
+
+lyric_sentiment <- lyric_counts %>%
+  inner_join(get_sentiments('nrc'))
+
+jazz_score <- lyric_sentiment
+jazz_score %>%
+  ggplot(aes(x = factor(sentiment))) +
+  geom_bar(aes(fill=factor(sentiment))) +
+  labs(title="sentiment bar plot for jazz music")
+
+
+  #for hip-hop
+Hip_Hop<-filter(dt_lyrics,genre=="Hip-Hop")
+lyrics_hip<-Hip_Hop%>%
+  unnest_tokens(word,lyrics)
+
+totals_hip <- lyrics_hip%>%
+  count(song) %>%
+  rename(total_words = n)
+
+lyric_counts1 <- lyrics_hip%>%
+  left_join(totals_hip, by = 'song')
+
+lyric_sentiment1 <- lyric_counts1 %>%
+  inner_join(get_sentiments('nrc'))
+
+hip_score <- lyric_sentiment1
+hip_score %>%
+  ggplot(aes(x = factor(sentiment))) +
+  geom_bar(aes(fill=factor(sentiment))) +
+  labs(title="sentiment bar plot for hip-hop music")
+
+```
+From the bar plot, I notice that the negative words appears more often on hip-hop music.
+
+#### Lyrics become angrier, more fearful and less joyful may cause people spend less time on listening jazz music. 
+
+## Reason 3: Curious about the Fresh things. 
+
+```{r,echo=FALSE}
+# words frequency change on jazz music 
+load('../output/processed_lyrics.RData')  
+jazz<-subset(dt_lyrics,dt_lyrics$genre=='Jazz')
+Hip_Hop<-subset(dt_lyrics,dt_lyrics$genre=='Hip-Hop')
+year_start0 <- as.integer(substr('1990s', 1, 4))
+
+dt_sub0 <- filter(jazz, year>=year_start0) %>%
+  filter(year<(year_start0+10))
+lyric_unigrams0 <- dt_sub0 %>%
+  unnest_tokens(unigram, stemmedwords, token = "ngrams", n = 1)
+unigram_counts0 <- lyric_unigrams0 %>%
+  separate(unigram, "word", sep = " ") %>%
+  count(word, sort = TRUE)%>%
+  top_n(10)%>%
+  mutate(word=fct_reorder(word,n))
+
+
+p1<-ggplot(unigram_counts0, aes(x = word, y = n,fill=word))+
+  geom_col(show.legend=FALSE)+ggtitle("most frequent words in 1990s for jazz music")
+
+```
+
+```{r, echo=FALSE}
+year_start1 <- as.integer(substr('2010s', 1, 4))
+
+dt_sub1 <- filter(jazz, year>=year_start1) %>%
+  filter(year<(year_start1+10))
+lyric_unigrams1 <- dt_sub1 %>%
+  unnest_tokens(unigram, stemmedwords, token = "ngrams", n = 1)
+unigram_counts1 <- lyric_unigrams1 %>%
+  separate(unigram, "word", sep = " ") %>%
+  count(word, sort = TRUE)%>%
+  top_n(15)%>%
+  mutate(word=fct_reorder(word,n))
+
+
+p2<-ggplot(unigram_counts1, aes(x = word, y = n,fill=word))+
+  geom_col(show.legend=FALSE)+ggtitle("most frequent words in 2010s for jazz music")
+  
+grid.arrange(p1,p2)
+
+
+
+
+
+
+# words frequency change on hip-hop music 
+year_start2 <- as.integer(substr('1990s', 1, 4))
+
+dt_sub2 <- filter(Hip_Hop, year>=year_start2) %>%
+  filter(year<(year_start2+10))
+lyric_unigrams2 <- dt_sub2 %>%
+  unnest_tokens(unigram, stemmedwords, token = "ngrams", n = 1)
+unigram_counts2 <- lyric_unigrams2 %>%
+  separate(unigram, "word", sep = " ") %>%
+  count(word, sort = TRUE)%>%
+  top_n(10)%>%
+  mutate(word=fct_reorder(word,n))
+
+
+p11<-ggplot(unigram_counts2, aes(x = word, y = n,fill=word))+
+  geom_col(show.legend=FALSE)+ggtitle("most frequent words in 1990s for hip-hop music")
+
+year_start3 <- as.integer(substr('2010s', 1, 4))
+
+dt_sub3 <- filter(Hip_Hop, year>=year_start3) %>%
+  filter(year<(year_start3+10))
+lyric_unigrams3 <- dt_sub3 %>%
+  unnest_tokens(unigram, stemmedwords, token = "ngrams", n = 1)
+unigram_counts3<- lyric_unigrams3 %>%
+  separate(unigram, "word", sep = " ") %>%
+  count(word, sort = TRUE)%>%
+  top_n(10)%>%
+  mutate(word=fct_reorder(word,n))
+
+
+p22<-ggplot(unigram_counts3, aes(x = word, y = n,fill=word))+
+  geom_col(show.legend=FALSE)+ggtitle("most frequent words in 2010s for hip-hop music")
+  
+grid.arrange(p11,p22)
+
+
+
+
+```
+
+```{r,echo=FALSE}
+
+lyric_unigrams7 <- jazz%>%
+  unnest_tokens(unigram, stemmedwords, token = "ngrams", n = 1)
+unigram_counts7 <- lyric_unigrams7 %>%
+  separate(unigram, "word", sep = " ") %>%
+  count(word, sort = TRUE)
+unigram_counts7[which(unigram_counts7$word =='technology'), ]$n
+
+
+metal<-filter(dt_lyrics,genre=="Metal")
+lyric_unigrams6 <- metal%>%
+  unnest_tokens(unigram, stemmedwords, token = "ngrams", n = 1)
+unigram_counts6<- lyric_unigrams6 %>%
+  separate(unigram, "word", sep = " ") %>%
+  count(word, sort = TRUE)
+
+unigram_counts6[which(unigram_counts6$word =='technology'), ]$n
+
+```
+
+
+I compare the most frequently used words for jazz music on 1990s and 2010s. Unsurprisingly, jazz music keeps using traditional words with the time changes. Contrastly, the words change dramatically in hip-jop music. Most of those words are slang, which may not exist at pre-hip-hop era (such as:homie,groupie). 
+
+The development of technology also changes people's listening style. I check the frequency of word \'technology' appears in jazz music. It is 0. however, it appears on metal song lyrics 32 times. 
+
+#### Due to the curiousness of new stuff, people prefer other types of music instead of jazz-- an old fashioned genre of music. 
+
+## Conclusions
+1. The rise of other types of music which occupy the market. 
+
+2. Recently, people prefer to express negative feelings more. Jazz music is not their first choice to listen.
+
+3. People like to try out the new things. Using slangs make them feel cool.
+
+
+```{r,echo=FALSE}
+#function created for association 
+#create_tdm_dtm <- function(df, genre, stem = F, tdm = T, sparse = 0.95){
+  #df <- df[dt_lyrics$genre == genre, ]
+  #df <- dplyr::select(dt_lyrics, lyrics)
+  #df <- df$lyrics
+  #df_source <- VectorSource(df)
+  #df_corpus <- VCorpus(df_source)
+  #clean_corp <- corpus
+  #if(stem){
+    #clean_corp <- tm_map(corpus, stemDocument)
+  #} else{
+    #clean_corp
+  #}
+  #if(tdm){
+   # clean_m <- TermDocumentMatrix(clean_corp)
+  #} else{
+   # clean_m <- DocumentTermMatrix(clean_corp)
+  #}
+  #clean_non_sparse <- removeSparseTerms(clean_m, sparse = sparse)
+  #return(clean_non_sparse)
+#}
+
+
+```
+
+
+
+
+
+
+
+```{r,echo=FALSE}
+
+
+#positive sentiment over year 
+#lyrics_all<-dt_lyrics%>%
+ # unnest_tokens(word,lyrics)
+
+#totals_all<- lyrics_all%>%
+ # count(song) %>%
+  #rename(total_words = n) # add 1 after words 
+
+#lyric_counts_all <- lyrics_all%>%
+ # left_join(totals_all, by = 'song')
+
+#lyric_sentiment_all <- lyric_counts_all %>%
+ # inner_join(get_sentiments('nrc'))
+
+#all<-lyric_sentiment_all
+#all%>%
+ # filter(sentiment == 'joy') %>%
+  #count(song, year, total_words) %>%
+  #ungroup() %>%
+  #mutate(percent = n / total_words,
+   #      year = 10 * floor(year / 10)) %>%
+  #ggplot(aes(x = factor(year), y = percent)) +
+  #geom_boxplot()
+
+#negative sentiment over time 
+#all%>%
+ # filter(sentiment == 'negative') %>%
+  #count(song, year, total_words) %>%
+  #ungroup() %>%
+  #mutate(percent = n / total_words,
+    #     year = 10 * floor(year / 10)) %>%
+  #ggplot(aes(x = factor(year), y = percent)) +
+  #geom_boxplot()
+
+
+#relationship between sentiment and year 
+#joy_by_year<-lyric_sentiment_all%>%
+  #filter(sentiment=="positive")%>%
+  #count(song,year,total_words)%>%
+  #ungroup()%>%
+  #mutate(percent=n/total_words)
+
+#model_joy_emo <- lm(percent ~ year, data = joy_by_year)
+#summary(model_joy_emo)
+
+#fear_by_year <- lyric_sentiment_all %>%
+  # Filter for negative words
+  #filter(sentiment == 'fear') %>%
+  #count(song, year, total_words) %>%
+  #ungroup() %>%
+  #mutate(percent = n/total_words)
+
+#model_fear_emo <- lm(percent ~ year, data = fear_by_year)
+#summary(model_fear_emo)
+
+#posjoy_by_year <- lyric_sentiment_all %>%
+  # Filter for negative words
+  #filter(sentiment == 'trust' | sentiment == 'joy') %>%
+  #count(song, year, total_words) %>%
+  #ungroup() %>%
+  #mutate(percent = n/total_words)
+
+#model_posjoy_emo <- lm(percent ~ year, data = posjoy_by_year)
+#summary(model_posjoy_emo)
+
+```
+
+
+
+
+```{r,echo=FALSE}
+#association with techonology 
+#rock_dtm <- create_tdm_dtm(dt_lyrics, 'Rock', stem = T)
+#associations <- findAssocs(hip_dtm, 'love', 0.05)
+#associations_df <- list_vect2df(associations, col2 = 'word', col3 = 'score')
+#ggplot(data = associations_df, aes(score, word)) +
+  #geom_point(size = 3) + 
+  #theme_gdocs()
+
+#jazz_dtm <- create_tdm_dtm(dt_lyrics, 'Jazz', stem = T)
+#associations <- findAssocs(jazz_dtm, 'love', 0.05)
+#associations_df <- list_vect2df(associations, col2 = 'word', col3 = 'score')
+#ggplot(data = associations_df, aes(score, word)) +
+ # geom_point(size = 3) + 
+  #theme_gdocs()
+
+```
+
+
+

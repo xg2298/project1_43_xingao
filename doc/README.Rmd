@@ -1,0 +1,13 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### ADS Project 1: "Data Story" on Song Lyrics
+#### Doc folder
+
+The doc directory contains the rmd file, the html file and the presentation file.
+
+
+
+
